@@ -1,0 +1,219 @@
+#INDICE DE DENSIDAD DEL ESTADO
+
+```{r}
+#Trayendo la data
+library(rio)
+several <- import_list("Base IDE.xlsx",rbind = FALSE,na ="#N/A")
+data=several[[1]]
+str(data)
+```
+```{r}
+data=data[-c(143),] # eliminando Putumayo
+str(data)
+```
+
+```{r}
+#Creando una sub-base con las variables de interes
+dataIDE=data[,c(5:9)]
+names(dataIDE)=c("DNI","medicos","secundaria","agua","electricidad")
+summary(dataIDE)
+```
+
+#ANALISIS FACTORIAL EXPLORATORIO
+
+*PASO 1*: MATRIZ DE CORRELACION
+```{r}
+library(polycor)
+corMatrix=polycor::hetcor(dataIDE)$correlations
+```
+*PASO 2*: EXPLORAR CORRELACIONES:
+```{r}
+library(ggcorrplot)
+#Sin evaluar significancia
+ggcorrplot(corMatrix)
+```
+```{r}
+#Evaluando significancia
+ggcorrplot(corMatrix,
+           p.mat=cor_pmat(corMatrix),
+           insig="blank")
+```
+*PASO 3* VERIFICAR SI LOS DATOS PERMITEN FACTORIZAR
+--> Overall MSA debe ser mayor a 0.6
+```{r}
+library(psych)
+psych::KMO(corMatrix)
+```
+*PASO 4* VERIFICAR SI LA MATRIZ DE CORRELACIONES ES ADECUADA:
+--> Debe salir falso en ambas pruebas
+```{r}
+library(matrixcalc)
+is.singular.matrix(corMatrix)
+```
+```{r}
+cortest.bartlett(corMatrix,n=nrow(dataIDE))$p.value>0.05
+```
+*PASO 5*: DETERMINAR EN CUANTOS FACTORES O VARIABLES LATENTES PODEMOS REDIMENSIONAR LA DATA
+```{r}
+fa.parallel(dataIDE,fm='ML',fa='fa')
+```
+
+*Sugiere dos factores/variables latentes!!!*
+
+*PASO 6*: REDIMENSIONAR A NUMERO MENOR DE FACTORES
+```{r}
+library(GPArotation)
+resfa<-fa(dataIDE,nfactors=2,cor='mixed',rotate="varimax",fm="minres")
+```
+```{r}
+#Resultado original
+print(resfa$loadings)
+```
+```{r}
+#Resultado mejorado:
+print(resfa$loadings,cutoff=0.51)
+```
+```{r}
+#Resultado visual:
+fa.diagram(resfa)
+```
+*PASO 7*: EVALUANDO EL RESULTADO OBTENIDO
+```{r}
+#La raiz del error cuadratico medio corregida esta cerca a cero?
+resfa$crms
+```
+```{r}
+#La raiz del error cuadratico medio de aproximacion es menor a 0.05?--> chequear el valor de RMSEA
+resfa$RMSEA
+```
+```{r}
+#El indice de Tucker-Lewis es mayor a 0.9?
+resfa$TLI
+```
+```{r}
+#Que variables aportan mas a los factores?
+sort(resfa$communality)
+```
+```{r}
+#Que variables contribuyen a mas de un factor?
+sort(resfa$complexity)
+```
+
+*Pareciera que las variables contribuyen demasiado a mas de un factor. Probemos redimensionando a UNA SOLA VARIABLE LATENTE:*
+```{r}
+resfa2<-fa(dataIDE,nfactors=1,cor='mixed',rotate="varimax",fm="minres")
+```
+```{r}
+#Resultado original
+print(resfa2$loadings)
+```
+```{r}
+#Resultado mejorado:
+print(resfa2$loadings,cutoff=0.51)
+```
+```{r}
+#Resultado visual:
+fa.diagram(resfa2)
+```
+*EVALUANDO EL RESULTADO OBTENIDO con un factor*
+```{r}
+#La raiz del error cuadratico medio corregida esta cerca a cero?
+resfa2$crms
+```
+```{r}
+#La raiz del error cuadratico medio de aproximacion es menor a 0.05?--> chequear el valor de RMSEA
+resfa2$RMSEA
+```
+```{r}
+#El indice de Tucker-Lewis es mayor a 0.9?
+resfa2$TLI
+```
+```{r}
+#Que variables aportan mas a los factores?
+sort(resfa2$communality)
+```
+```{r}
+#Que variables contribuyen a mas de un factor?
+sort(resfa2$complexity)
+```
+
+*DE ACUERDO A LOS RESULTADOS OBTENIDOS, VEMOS QUE ES MEJOR SEPARAR EN DOS FACTORES O VARIABLES LATENTES*
+
+#ANALISIS CONFIRMATIVO
+
+*--> Confirmando el modelo teorico*
+
+```{r}
+model <- ' latente1  =~ agua + medicos + electricidad 
+        latente2 =~ secundaria + DNI'
+```
+Vemos que arroja el modelo:
+```{r}
+library(lavaan)
+cfa_fit <- cfa(model, data=dataIDE, 
+           std.lv=TRUE,  
+           missing="fiml")
+```
+
+Preparamos los tests:
+```{r}
+allParamCFA=parameterEstimates(cfa_fit,standardized = T)
+allFitCFA=as.list(fitMeasures(cfa_fit))
+```
+
+Veamos resultados:
+--> Si cada indicador tiene una buena conexión con su latente (ver p valor):
+```{r}
+library(knitr)
+kable(allParamCFA[allParamCFA$op=="=~",])
+```
+
+Averigüemos qué tan bien salió el modelo:
+
+El ChiSquare es NO significativo (p_value debe ser mayor a 0.05 para que sea bueno)?
+```{r}
+allFitCFA[c("chisq", "df", "pvalue")] # pvalue>0.05
+```
+???? NO DEBERIA SER P<0.05???
+
+El Índice Tucker Lewi es mayor a 0.9?
+```{r}
+allFitCFA$tli # > 0.90
+```
+La Raíz del error cuadrático medio de aproximación es menor a 0.05?
+```{r}
+allFitCFA[c('rmsea.ci.lower','rmsea' ,'rmsea.ci.upper')] # 0.05 en el Int de Conf?
+```
+
+Añadimos los índices a la data de indicadores:
+```{r}
+
+dataIDE=as.data.frame(cbind(dataIDE,lavPredict(cfa_fit)))
+```
+```{r}
+summary(dataIDE)
+```
+
+Ahora podemos correr una regresión con los índices:
+
+```{r}
+#primera latente
+summary(lm(latente1~agua+medicos+electricidad,data = dataIDE))
+```
+```{r}
+#segunda latente
+summary(lm(latente2~DNI+secundaria,data = dataIDE))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
