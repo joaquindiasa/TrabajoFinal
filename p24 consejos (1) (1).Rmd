@@ -1,0 +1,67 @@
+```{r}
+library(rio)
+P24="https://github.com/joaquindiasa/TrabajoFinal/raw/master/C07.sav"
+P24_Data=import(P24)
+```
+
+```{r}
+names(P24_Data)
+```
+
+
+
+```{r}
+P24_sub=P24_Data[,c(1:7, 76)]
+```
+
+```{r}
+P24_sub=na.omit(P24_sub)
+```
+
+```{r}
+head(P24_sub)
+```
+
+
+```{r}
+library(dplyr)
+
+P24_sub$P24= dplyr::recode(P24_sub$P24,
+       '1'='1',
+       '2'='0')
+```
+```{r}
+P24_sub$conteo=1
+```
+
+```{r}
+P24_sub$P24clean=as.numeric(P24_sub$P24)
+```
+
+```{r}
+consejo=as.matrix(aggregate(cbind(P24clean) ~ Provincia + Departamento, 
+          data = P24_sub, sum)) 
+consejo=as.data.frame(consejo)
+rownames(consejo)=consejo$Provincia
+```
+
+
+```{r}
+conteo=as.matrix(aggregate(cbind(conteo) ~ Provincia + Departamento, 
+          data = P24_sub, sum)) 
+conteo=as.data.frame(conteo)
+
+consejo$conteo=conteo$conteo
+```
+
+```{r}
+str(consejo)
+
+```
+
+
+```{r}
+head(P24_sub)
+```
+
+
